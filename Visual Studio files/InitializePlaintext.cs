@@ -8,36 +8,76 @@ namespace ConsoleApp1
 {
     partial class Program
     {
-        static public string[] InitializePlaintextEncryption()
+        static public void InitializePlaintextEncryption()
         {
-            //Need to right-shift all plaintext values, as there is a 0 added to the end
+            //Get an array of all the characters in the input string represented as bytes.
+            //Each character is one byte.
+            byte[] bytes = Encoding.ASCII.GetBytes(InputText);
+
+            //Build an array of 64-bit binary strings.
+            //Earch array needs to be 64 bits, so if it doesn't have 8 bytes worth, we will pad with space.
+            //When decrypting, we'll remove the space from the end of the resulting text.
+
+            string building = "";
+            string tempString;
             //Split the string into lengths of 8
+            PreEncryptionBitsList = new List<string>();
 
-            PlaintextBits = GetBits(Plaintext);
-            var PlaintextBitsDivided = Split(PlaintextBits, 8).ToArray();
+            int i = 0;
 
-            //Right shift here
-            for (int i = 0; i < PlaintextBitsDivided.Length; i++)
+            int counter = 0;
+            //Only loop as long as we have bytes left
+            while (counter < bytes.Length)
             {
-                PlaintextBitsDivided[i] = RightShift(PlaintextBitsDivided[i]);
+                building = "";
+                //Loop 8 bytes at a time, but stop if counter gets too high.
+                for (i = 0; i < 8 & counter < bytes.Length; i++)
+                {
+                    tempString = Convert.ToString(bytes[counter], 2);
+                    while(tempString.Length < 8)
+                    {
+                        //If our binary string representing an ascii value is not 8 bits, pad it with 0 at the front.
+                        tempString = tempString.Insert(0, "0");
+                    }
+                    building += tempString;
+                    counter++;
+                }
+
+                //If i is less than 7, then we did not have a number of bytes exactly divisible by 8.
+                //This means we need to pad.
+                if (i < 8)
+                {
+                    byte temp;
+
+                    while (i < 8)
+                    {
+                        //Pad with space
+                        temp = Encoding.ASCII.GetBytes(" ")[0];
+                        tempString = Convert.ToString(temp, 2);
+                        while (tempString.Length < 8)
+                        {
+                            //If our binary string representing an ascii value is not 8 bits, pad it with 0 at the front.
+                            tempString = tempString.Insert(0, "0");
+                        }
+                        building += tempString;
+                        i++;
+                    }                    
+                }
+
+                PreEncryptionBitsList.Add(string.Copy(building));
             }
-
-            //Join again to a single string so we can get 16 bit word lengths
-
-            var RightShifted = string.Join("", PlaintextBitsDivided);
-
-            var PlaintextBitsDivided4 = Split(RightShifted, 4);
-
-            return PlaintextBitsDivided4.ToArray();
         }
 
-        static string[] InitializeCiphertext()
+        static void InitializeCiphertext()
         {
-            PlaintextBits = GetBitsFromHex(Plaintext);
-            var CiphertextBitsDivided4 = Split(PlaintextBits, 4);
+            //The result of encryption will always be a block that is a multiple of 64 bits
+            PreEncryptedBits = GetBitsFromHex(InputText);
 
-            return CiphertextBitsDivided4.ToArray();
+            //Get a number of how many 64 bit chunks there are
+            int chunkSize = PreEncryptedBits.Length / 64;
 
+            //Create a list of bits
+            PreEncryptionBitsList = Split(PreEncryptedBits, chunkSize);
         }
     }
 }

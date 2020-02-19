@@ -79,8 +79,7 @@ namespace ConsoleApp1
 
         public static string GetHexStringFromBitString(string BitString)
         {
-            string strHex = Convert.ToUInt64(BitString, 2).ToString("X");
-            return strHex;
+            return Convert.ToUInt64(BitString, 2).ToString("X");
         }
 
         public static string GetCharacterStringFromHexString(string hexString)
@@ -96,6 +95,44 @@ namespace ConsoleApp1
                 sb.Append((char)Convert.ToByte(hexChar, 16));
             }
             return sb.ToString();
+        }
+
+        public static string GetAsciiFromHex(String hexString)
+        {
+            try
+            {
+                string ascii = string.Empty;
+
+                for (int i = 0; i < hexString.Length; i += 2)
+                {
+                    String hs = string.Empty;
+
+                    hs = hexString.Substring(i, 2);
+                    uint decval = Convert.ToUInt32(hs, 16);
+                    char character = Convert.ToChar(decval);
+                    ascii += character;
+
+                }
+
+                return ascii;
+            }
+            catch (Exception ex) { Console.WriteLine(ex.Message); }
+
+            return string.Empty;
+        }
+
+        public Byte[] GetBytesFromBinaryString(String binary)
+        {
+            var list = new List<Byte>();
+
+            for (int i = 0; i < binary.Length; i += 8)
+            {
+                String t = binary.Substring(i, 8);
+
+                list.Add(Convert.ToByte(t, 2));
+            }
+
+            return list.ToArray();            
         }
     }
 }

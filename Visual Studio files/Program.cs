@@ -4,156 +4,227 @@ using System.Linq;
 
 namespace ConsoleApp1
 {
-    //Left to do:
-    
-    //Handle input block sizes greater than 64 bits
-    //Loop through for each block size?
-
-    //Set option to decrypt or encrypt only
-
     partial class Program
     {        
-        //text to be encrypted
-        static string Plaintext;
+        //text to pass through encryption
+        static string InputText;
 
-        //text to be encrypted converted to bits - needs right shift here
-        static string PlaintextBits;
+        //text to be encrypted converted to bits
+        static string PreEncryptedBits;
 
         //decryption key, 64 bits, hex format
         static string InputKey;
 
-        //decryption key converted to binary
-        //storing this for reference, won't modify this value
-        //static string KeyBits;
+        //Stores a list of 64 bit plaintext converted to bits, with padding in the last entry if necessary
+        static List<string> PreEncryptionBitsList;
 
+        //Stores a list of encrypted bits
+        //Used for creating a string of hex characters in the case of encryption,
+        //Or for translating to ascii for decryption.
+        static List<string> PostEncryptionBitsList;
+
+        //16 rounds of encryption
         static readonly int RoundCount = 16;
-        static int CurrentRound = 0;
 
+        //Counter for which round we're at
+        static int CurrentRound;
+
+        //A list of rounds, and the values from each round. Helps debug.
         static List<round> Rounds;     
 
         static void Main(string[] args)
         {
-            string[] PlaintextBitsDivided4;
-            Console.WriteLine("Will you be encrypting (1) or decrypting (2)?");
-            var input = Console.ReadLine();
-            Console.WriteLine();
-            if (input.Contains("1"))
+            bool KeepLooping = true;
+            while (KeepLooping)
             {
-                //Encrypting
-                //Grab plaintext from plaintext.txt
-                //Grab key from key.txt
-                Console.WriteLine("Encryption selected.");
-                Console.WriteLine("\tReading plaintext from file.");
-                Plaintext = System.IO.File.ReadAllText(@"plaintext.txt");
+                Console.WriteLine("Will you be encrypting (1) or decrypting (2)?");
+                var input = Console.ReadLine();
+                Console.WriteLine();
+                if (input.Contains("1"))
+                {
+                    //Encrypting
+                    //Grab plaintext from plaintext.txt
+                    //Grab key from key.txt
+                    Console.WriteLine("Encryption selected.");
+                    Console.WriteLine("\tReading plaintext from file.");
+                    InputText = System.IO.File.ReadAllText(@"plaintext.txt");
 
-                Console.WriteLine("\tReading key from file.");
-                InputKey = System.IO.File.ReadAllText(@"key.txt");
+                    if(InputText.ElementAt(InputText.Length-1) == ' ')
+                    {
+                        while(InputText.ElementAt(InputText.Length - 1) == ' ')
+                        {
+                            InputText = InputText.Remove(InputText.Length - 1);
+                        }
 
-                Console.WriteLine("\tPlaintext:\n\t\t" + Plaintext);
-                Console.WriteLine("\tKey:\n\t\t" + InputKey + "\n");
+                        Console.WriteLine("\tTrailing spaces removed from the end of the input string.");
+                    }
 
-                InitializeSubkeys();
+                    Console.WriteLine("\tReading key from file.");
+                    InputKey = System.IO.File.ReadAllText(@"key.txt");
 
-                //Initialize plaintext
-                PlaintextBitsDivided4 = InitializePlaintextEncryption();
-            }
-            else
-            {
-                Console.WriteLine("Decryption selected.");
+                    Console.WriteLine("\tPlaintext:\n\t\t" + InputText);
+                    Console.WriteLine("\tKey:\n\t\t" + InputKey + "\n");
 
-                Console.WriteLine("\tReading ciphertext from file.");
-                Plaintext = System.IO.File.ReadAllText(@"ciphertext.txt");
+                    //Make a list of subkeys
+                    InitializeSubkeys();
 
-                Console.WriteLine("\tReading key from file.");
-                InputKey = System.IO.File.ReadAllText(@"key.txt");
-
-                Console.WriteLine("\tCiphertext:\n\t\t" + Plaintext);
-                Console.WriteLine("\tKey:\n\t\t" + InputKey);
-
-                InitializeSubkeys();
-
-                Console.WriteLine("\tReversing order of subkeys.\n");
-
-                PlaintextBitsDivided4 = InitializeCiphertext();
-
-                Array.Reverse(Subkeys);
-            }
-
-            //KeyBits = GetBitsFromHex(InputKey);
-            
-
-
-            Rounds = new List<round>();
-
-            //Create the first round
-            var FirstRound = new round();
-
-            //Input the plaintext converted to bits
-            FirstRound.InputListOfBitStrings = PlaintextBitsDivided4.ToArray();
-
-            //Whiten the plaintext
-            FirstRound.WhitenInput();
-
-            //Primary round permutation loop
-            //Encryption
-
-            while(CurrentRound < RoundCount)
-            {
-                if(Rounds.Count == 0)
-                    Rounds.Add(FirstRound);
+                    //Initialize plaintext
+                    InitializePlaintextEncryption();
+                }
                 else
-                    Rounds.Add(new round(Rounds.Last(), CurrentRound));
+                {
+                    Console.WriteLine("Decryption selected.");
 
-                //Reset the key index that loops through the 12 keys
-                CurrentKey = 0;
+                    Console.WriteLine("\tReading ciphertext from file.");
+                    InputText = System.IO.File.ReadAllText(@"ciphertext.txt");
+
+                    Console.WriteLine("\tReading key from file.");
+                    InputKey = System.IO.File.ReadAllText(@"key.txt");
+
+                    Console.WriteLine("\tCiphertext:\n\t\t" + InputText);
+                    Console.WriteLine("\tKey:\n\t\t" + InputKey);
+
+                    //Make a list of subkeys
+                    InitializeSubkeys();
+
+                    //Reverse key order for decryption
+                    Console.WriteLine("\tReversing order of subkeys.\n");
+                    Array.Reverse(Subkeys);
+
+                    InitializeCiphertext();                   
+                }
+
                 
-                F(); //Run the F function, which will populate F0 and F1 values.
+                int Counter = 0;
 
-                Rounds.Last().XorF0F1();
+                //Stores bits after each 64-bt block.
+                PostEncryptionBitsList = new List<string>();
 
-                //Swap the sides now that our Xoring is complete
-                Rounds.Last().SwapOutput();
+                //Loop through the list of 64 bit chunks and run the encryption algorithm on them.
+                while (Counter < PreEncryptionBitsList.Count)
+                {
+                    Rounds = new List<round>();
+                    CurrentRound = 0;
 
-                CurrentRound++;
-            }
+                    //Create the first round
+                    var FirstRound = new round();
 
-            //Rounds are done.
-            //Re-swap the last round.
-            Rounds.Last().SwapOutput();
+                    //Input the plaintext converted to bits
+                    FirstRound.InputListOfBitStrings = Split(PreEncryptionBitsList[Counter], 4).ToArray();
 
-            //Whiten against the current key.
-            Rounds.Last().WhitenOutput();
-            
-            //Convert binary stored to hex
-            
+                    //Whiten the plaintext
+                    FirstRound.WhitenInput();
 
-            if(input.Contains("1"))
-            {
-                //encryption was selected
-                string encrypted = string.Join("", Rounds.Last().OutputListOfBitStrings);
-                string encryptedHex = GetHexStringFromBitString(encrypted);
+                    //Primary round permutation loop
+                    //Loop through 16 rounds
+                    while (CurrentRound < RoundCount)
+                    {
+                        if (Rounds.Count == 0)
+                            Rounds.Add(FirstRound);
+                        else
+                            Rounds.Add(new round(Rounds.Last(), CurrentRound));
 
-                Console.WriteLine("Encryption complete.");
-                Console.WriteLine("\tEncrypted text:\n\t\t" + encryptedHex);
+                        //Reset the key index that loops through the 12 keys
+                        CurrentKey = 0;
 
-                Console.WriteLine("\tWriting to ciphertext.txt\n");
-                Console.WriteLine("Press enter to finish.");
-                System.IO.File.WriteAllText(@"ciphertext.txt", encryptedHex);
-                Console.ReadLine();
-            }
-            else
-            {
-                //decryption
-                string decrypted = string.Join("", Rounds.Last().OutputListOfBitStrings);
-                string decryptedHex = GetHexStringFromBitString(decrypted);
-                string decryptedString = GetCharacterStringFromHexString(decryptedHex);
+                        F(); //Run the F function, which will populate F0 and F1 values.
 
-                Console.WriteLine("Decryption complete.");
-                Console.WriteLine("\tDecrypted string:\n\t\t" + decryptedString);
-                Console.WriteLine("\tWriting to plaintext.txt\n");
-                Console.WriteLine("Press enter to finish.");
-                System.IO.File.WriteAllText(@"plaintext.txt", decryptedString);
-                Console.ReadLine();
+                        Rounds.Last().XorF0F1();
+
+                        //Swap the sides now that our Xoring is complete
+                        Rounds.Last().SwapOutput();
+
+                        CurrentRound++;
+                    }
+
+                    //Rounds are done.
+                    //Re-swap the last round.
+                    Rounds.Last().SwapOutput();
+
+                    //Whiten against the current key.
+                    Rounds.Last().WhitenOutput();
+
+                    //Store this encryption in an ongoing list for final parsing
+                    PostEncryptionBitsList.Add(string.Join("", Rounds.Last().OutputListOfBitStrings));
+
+                    Counter++;
+                }
+
+                if (input.Contains("1"))
+                {
+                    //encryption was selected
+                    //string encryptedBinary = string.Join("", Rounds.Last().OutputListOfBitStrings);
+
+                    //Loop through encryptedbistlist and get hex from each bitstring
+                    List<string> encryptedHexList = new List<string>();
+                    string tempHex;
+                    string hexString;
+
+                    for (int i = 0; i < PostEncryptionBitsList.Count; i++)
+                    {
+                        //Split the list of bits into sections of 4, for hex conversion
+                        var splitBits = Split(PostEncryptionBitsList[i], 16).ToArray();
+                        hexString = "";
+
+                        for(int j = 0; j < splitBits.Length; j++)
+                        {
+                            tempHex = GetHexStringFromBitString(splitBits[j]);
+                            hexString += tempHex;
+                        }
+
+                        encryptedHexList.Add(hexString);
+                    }
+
+                    string encryptedHex = String.Join("", encryptedHexList.ToArray());
+
+                    Console.WriteLine("Encryption complete.");
+                    Console.WriteLine("\tEncrypted text:\n\t\t" + encryptedHex);
+
+                    Console.WriteLine("\tWriting to ciphertext.txt\n");
+                    Console.WriteLine("Press enter to finish.");
+                    System.IO.File.WriteAllText(@"ciphertext.txt", encryptedHex);
+                    Console.ReadLine();
+                }
+                else
+                {
+                    //decryption
+                    string decryptedString = "";
+                    string temp;
+
+                    for (int i = 0; i < PostEncryptionBitsList.Count; i++)
+                    {
+                        temp = GetHexStringFromBitString(PostEncryptionBitsList[i]);
+                        decryptedString += GetAsciiFromHex(temp);
+                    }
+
+                    //Remove empty spaces at the end, which were only put there for padding
+                    while(decryptedString.ElementAt(decryptedString.Length-1) == ' ')
+                    {
+                        decryptedString = decryptedString.Remove(decryptedString.Length - 1);
+                    }
+
+                    Console.WriteLine("Decryption complete.");
+                    Console.WriteLine("\tDecrypted string:\n\t\t" + decryptedString);
+                    Console.WriteLine("\tWriting to plaintext.txt\n");
+                    Console.WriteLine("Press enter to finish.");
+                    System.IO.File.WriteAllText(@"plaintext.txt", decryptedString);
+                    Console.ReadLine();
+                }
+
+                Console.WriteLine("Run again (1) or quit(2)?");
+                input = Console.ReadLine();
+                Console.WriteLine();
+
+                if(input.Contains("1"))
+                {
+                    Console.WriteLine("Running again.");
+                }
+                else
+                {
+                    Console.WriteLine("Quitting.");
+                    Console.WriteLine("Press enter to finish.");
+                    KeepLooping = false;
+                }
             }
         }
     }
